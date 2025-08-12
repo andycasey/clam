@@ -387,7 +387,6 @@ def fit_spectrum(flux, ivar, initial_parameters, vr_array, A, f_modes, X, H, c_m
 
     # Initially we will do the fit without carbon.
     """
-
     n_parameters_without_x_m = 5
     θ_1 = jnp.hstack([θ_continuum_0, θ_stellar_0[-n_parameters_without_x_m:]])
     
@@ -412,8 +411,6 @@ def fit_spectrum(flux, ivar, initial_parameters, vr_array, A, f_modes, X, H, c_m
         method="bfgs", 
         options=dict(maxiter=10_000)
     )
-
-
     """
     θ_1 = jnp.hstack([θ_continuum_0, θ_stellar_0])
     predict_args = (vr_array, A, *emulate_args)
@@ -578,9 +575,13 @@ flux, ivar = jnp.array(flux), jnp.array(ivar)
 from astropy.io import fits
 image = fits.open("../astraAllStarApogeeNet-0.6.0.fits")
 
+points = [
+    (5, 0.5),
+    (1.5, -1.5)
+]
 
 def initial_C_m(logg):
-    return jnp.clip(0.5 * logg -1.5, -1.5, 0.5)
+    return jnp.clip(0.43 * logg -2.1, -1.5, 0.5)
 
 initial_parameters = []
 for row in all_meta:
@@ -605,6 +606,7 @@ results = []
 for i in tqdm(range(flux.shape[0])):
     results.append(fit_spectrum(flux[i], ivar[i], initial_parameters[i], *args))
 t_fitting += time()
+
 
 
 stellar_parameters = jnp.array([from_domain(r[0][-n_stellar_parameters:]) for r in results])
@@ -680,7 +682,7 @@ log2_flag = {
     61: "Carina",
 }
 import h5py as h5
-with h5.File("20250730_cluster_results_bfgs_C_m_5.h5", "w") as fp:
+with h5.File("20250730_cluster_results_bfgs_C_m_6.h5", "w") as fp:
     group = fp.create_group("results")
 
     for i, parameter_name in enumerate(list(parameter_names)):
@@ -735,6 +737,7 @@ sdss_id = 111720191
 sdss_id = 111642794
 sdss_id = 88529875
 sdss_id = 88531395
+sdss_id = 88530815
 
 index = np.where(sdss_ids == sdss_id)[0][0] # problematic one
 
@@ -764,7 +767,6 @@ for i, ax in enumerate(axes.flat):
         λ, 
         star[3], 
         c="tab:blue", 
-        label=f"Initial model: " + (" ".join([f"{k}={v:.2f}" for k, v in init.items()])),
         zorder=-1,
         )
     ax.set_ylim(0, 1.2)
