@@ -25,8 +25,8 @@ import nmf
 
 input_path_prefix = "../korg_grid_subset_7d"
 n_components = 64
-wh_iterations = 100_000
-xh_iterations = 100_000
+wh_iterations = 10_000
+xh_iterations = 10_000
 epsilon = 1e-12
 verbose_frequency = 1_000
 learning_rate = 1e-3
@@ -35,7 +35,7 @@ overwrite = True
 seed = 42
 bit_precision = 64
 domain_bounds = (0, jnp.pi)
-n_modes = (3, 7, 11, 15)
+n_modes = (5, 3, 7, 11, 15)
 abundance_parameter_names = ("N_m", "C_m")
 
 supported_bit_precisions = (16, 32, 64)
@@ -149,6 +149,93 @@ X, H, W, xh_losses = nmf.update_XH(
 
 # Zero-out small values in H, as epsilon was only used for numerical stability
 H = jnp.where(H <= epsilon, 0.0, H)
+
+parameter_names = [pn for pn in meta["parameter_names"] if pn not in abundance_parameter_names]
+
+
+# prepare absorption differences.
+
+
+with open(f"{input_path_prefix}_meta.pkl", "rb") as f:
+    meta = pickle.load(f)
+    absorption_memmap_kwds = meta["absorption_memmap_kwds"]
+    parameter_memmap_kwds = meta["parameter_memmap_kwds"]
+
+absorption_memmap = np.memmap(f"{input_path_prefix}_absorption.memmap", mode="r", **absorption_memmap_kwds)
+x_memmap = np.memmap(f"{input_path_prefix}_parameters.memmap", mode="r", **parameter_memmap_kwds)
+
+all_parameter_names = meta["parameter_names"]
+
+x_m_args = []
+for x_m_parameter_name in ("C_m", "N_m"):
+
+    # Slice on other parameters to be X_m = 0
+    subset_mask = np.ones(x_memmap.shape[0], dtype=bool)
+    for parameter_name in abundance_parameter_names:
+        if parameter_name == x_m_parameter_name:
+            continue
+        index = all_parameter_names.index(parameter_name)
+        subset_mask *= (x_memmap[:, index] == 0.0)
+
+    # These are the ones we must match to.
+    subset_has_non_zero_x_m = (
+        subset_mask 
+    *   (x_memmap[:, all_parameter_names.index(x_m_parameter_name)] != 0.0)
+    )
+    subset_has_zero_x_m = (
+        subset_mask 
+    *   (x_memmap[:, all_parameter_names.index(x_m_parameter_name)] == 0.0)
+    )
+    x = jnp.array(x_memmap)
+    match_indices = tuple([all_parameter_names.index(pn) for pn in parameter_names])
+
+    assert match_indices == (2, 3, 4, 5, 6)
+
+    where_subset_has_zero_x_m = jnp.where(subset_has_zero_x_m)[0]
+
+    @jax.jit
+    def _get_match(i):
+        diff = jnp.sum(jnp.abs(x[:, slice(2, 7)][i] - x[subset_has_zero_x_m, slice(2, 7)]), axis=1)
+        index = jnp.argmin(diff)
+        return jax.lax.cond(
+            diff[index] > 0.01,
+            lambda: jnp.array((i, -1)),  # No match found
+            lambda: jnp.array((i, where_subset_has_zero_x_m[index]))
+        )
+
+    indices = jax.vmap(_get_match)(jnp.where(subset_has_non_zero_x_m)[0])
+
+    indices = indices[indices[:, 1] >= 0]
+
+    delta_absorption = absorption_memmap[indices[:, 0]] - absorption_memmap[indices[:, 1]]
+    scaled_delta_absorption = delta_absorption / np.atleast_2d(np.abs(x_memmap[indices[:, 0], all_parameter_names.index(x_m_parameter_name)])).T
+
+
+    x_indices = tuple([i for i, pn in enumerate(all_parameter_names) if pn in parameter_names or pn == x_m_parameter_name])
+    delta_x_transformed = x_memmap[indices[:, 0]][:, x_indices]
+
+    min_parameters = meta["min_parameters"]
+    max_parameters = meta["max_parameters"]
+    delta_x_transformed = (
+        (delta_x_transformed - min_parameters[[x_indices]]) / (max_parameters[[x_indices]] - min_parameters[[x_indices]])
+    ) * np.pi
+
+
+    x_m_n_components = 16
+    x_m_n_modes = (5, 3, 3, 3, 3, 15)
+    f_modes = nufft.fourier_modes(*x_m_n_modes)
+    _A = nufft.fourier_matvec(delta_x_transformed.T, f_modes)
+
+    model = PLSRegression(n_components=x_m_n_components)
+    model.fit(_A, scaled_delta_absorption)
+
+    min_x_m = min_parameters[all_parameter_names.index(x_m_parameter_name)]
+    max_x_m = max_parameters[all_parameter_names.index(x_m_parameter_name)]
+    x_m_args.append((x_m_parameter_name, min_x_m, max_x_m, f_modes, model.x_mean_, model.coef_.T, model.intercept_))
+    
+
+raise a
+
 
 with open("model.pkl", "wb") as fp:
     pickle.dump(dict(

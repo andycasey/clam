@@ -2,7 +2,7 @@
 import pickle
 import jax.numpy as jnp
 import spectrum_model
-from scalars import PeriodicScalar
+from scalers import PeriodicScaler
 
 
 with open("boss_model.pkl", "rb") as fp:
@@ -29,14 +29,14 @@ H_interp = np.array([
     for i in range(H.shape[0])
 ])
 
-parameter_scaler = PeriodicScalar(min_parameters, max_parameters, domain_maximum=jnp.pi)
+parameter_scaler = PeriodicScaler(min_parameters, max_parameters, domain_maximum=jnp.pi)
 
 
 
 model = spectrum_model.create_stellar_spectrum_model(
     λ=λ_boss,
     parameter_names=parameter_names,
-    parameter_scalar=parameter_scaler,
+    parameter_scaler=parameter_scaler,
     H=H_interp,
     X=X,
     n_modes=n_modes,

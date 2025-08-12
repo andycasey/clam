@@ -33,7 +33,7 @@ class StandardScaler(BaseScaler):
     
 
 
-class PeriodicScalar(BaseScaler):
+class PeriodicScaler(BaseScaler):
 
     minimum: jnp.ndarray
     maximum: jnp.ndarray
@@ -55,7 +55,7 @@ class PeriodicScalar(BaseScaler):
     def fit(self, X):
         minimum = jnp.min(X, axis=0)
         maximum = jnp.max(X, axis=0)
-        return PeriodicScalar(
+        return PeriodicScaler(
             minimum=minimum, 
             maximum=maximum, 
             domain_minimum=self.domain_minimum, 
@@ -78,10 +78,7 @@ class PeriodicScalar(BaseScaler):
         X %= 2 * jnp.pi
         X = jnp.where(X > (self.domain_maximum + domain_edge), X - 2 * jnp.pi, X) # wrap around
         X = (X - self.domain_minimum) / (self.domain_maximum - self.domain_minimum)
-        return (
-            X * (self.max_parameters - self.min_parameters) 
-        +   self.min_parameters
-        )
+        return X * (self.maximum - self.minimum) + self.minimum
     
     def __call__(self, X):
         X_scaled = (X - self.minimum) / (self.maximum - self.minimum)

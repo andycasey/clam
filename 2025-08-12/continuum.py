@@ -37,6 +37,8 @@ class ContinuumModel(eqx.Module):
     Module for modeling stellar continuum using Fourier basis functions.    
     """
     
+    parameter_names: Tuple[str, ...]
+    n_parameters: int
     continuum_regions: Tuple[Tuple[float, float], ...]
     continuum_n_modes: int
     design_matrix: jnp.ndarray
@@ -54,6 +56,10 @@ class ContinuumModel(eqx.Module):
             continuum_n_modes: Number of Fourier modes per region
             key: Random key for coefficient initialization
         """
+        self.parameter_names = tuple(
+            f"c_{i}" for i in range(len(continuum_regions) * continuum_n_modes)
+        )
+        self.n_parameters = len(self.parameter_names)
         self.continuum_regions = continuum_regions
         self.continuum_n_modes = continuum_n_modes
         self.design_matrix = self.create_design_matrix(λ)
